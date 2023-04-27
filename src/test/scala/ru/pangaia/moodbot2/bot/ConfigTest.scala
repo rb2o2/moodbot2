@@ -7,6 +7,4 @@ class ConfigTest extends AnyFlatSpec {
   "getToken" should "read resource file properly" in {
     assert(Config.getToken === "test1234")
   }
-
-
 }
