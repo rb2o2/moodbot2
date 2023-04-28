@@ -122,7 +122,7 @@ class MoodUpdatesListener extends UpdatesListener {
       case _ => (chatId: Long, userId: String) => state((chatId, userId)) match
         case State.SentPlotRequest => showPlot(chatId, userId, parseFrom(text), parseTo(text))
         case State.Base => record(chatId, userId, text)
-        case State.SentHistoryRequest => showHistory()
+        case State.SentHistoryRequest => showHistory(chatId, userId, parseFrom(text), parseTo(text))
     }
   }
 
