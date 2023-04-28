@@ -12,7 +12,7 @@ libraryDependencies := Seq(
   "org.scalatest" %% "scalatest" % "3.2.15" % "test",
   "org.scalikejdbc" %% "scalikejdbc" % "4.0.0",
   "ch.qos.logback"  %  "logback-classic" % "1.4.6",
-  "org.jfree" % "freechart" % "1.0.13",
+  "org.jfree" % "jfreechart" % "1.5.4",
   "com.typesafe.scala-logging" %% "scala-logging" % "3.9.5",
   "com.github.pengrad" % "java-telegram-bot-api" % "6.7.0"
 )
