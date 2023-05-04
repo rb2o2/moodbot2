@@ -12,7 +12,9 @@ object Config:
     res
   
   def apply(profile: String): Conf =
-    (key: String) => prop(profile)(key)
+    (key: String) => key match
+      case "token" => token
+      case _ => prop(profile)(key)
   
   private def prop: String => String => String =
     profile =>

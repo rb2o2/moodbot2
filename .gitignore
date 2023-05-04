@@ -39,6 +39,10 @@ build/
 
 ### custom excludes ###
 token
-init.sql
+*.sql
+application-dev.conf
+application-stage.conf
 .idea
 .bsp
+deploy/
+design/
