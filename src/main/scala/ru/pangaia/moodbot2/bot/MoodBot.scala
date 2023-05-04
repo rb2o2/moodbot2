@@ -3,44 +3,81 @@ package ru.pangaia.moodbot2.bot
 import com.pengrad.telegrambot
 import com.pengrad.telegrambot.model.Update
 import com.pengrad.telegrambot.model.request.{InlineKeyboardButton, InlineKeyboardMarkup}
-import com.pengrad.telegrambot.request.SendMessage
-import com.pengrad.telegrambot.response.{MessagesResponse, SendResponse}
+import com.pengrad.telegrambot.request.{BaseRequest, SendMessage}
+import com.pengrad.telegrambot.response.{BaseResponse, MessagesResponse, SendResponse}
 import com.pengrad.telegrambot.{TelegramBot, UpdatesListener}
 import com.typesafe.scalalogging.Logger
-import ru.pangaia.moodbot2.persistence.Persistence
+import ru.pangaia.moodbot2.bot.Config
+import ru.pangaia.moodbot2.data.{Mark, Message, Persistence}
 import ru.pangaia.moodbot2.plot.Plotter
 
+import java.io.{BufferedReader, InputStreamReader, Reader}
 import java.sql.Timestamp
 import java.time.format.DateTimeFormatter
-import java.time.{Instant, LocalDate, LocalDateTime, LocalTime, ZoneOffset}
+import java.time.*
 import java.util
 import java.util.TimeZone
 import java.util.concurrent.{CompletableFuture, SynchronousQueue}
 import scala.concurrent.Future
 import scala.jdk.CollectionConverters.*
+import scala.util.{Try, Using}
+
+type Conf = String => String
 
 @main
 def main(args: Array[String]): Unit = {
-  MoodBot.init()
+  val profile = Try(args(0)).getOrElse("dev")
+  val config = Config(profile)
+  val bot = new MoodBot(config)
+  bot.init()
+  bot.awaitTermination()
 }
 
-object MoodBot {
-  val bot: TelegramBot = new TelegramBot(Config.getToken)
-  val state: collection.mutable.Map[(Long,String), State] = new collection.mutable.HashMap[(Long,String), State]()
-  def init(): Unit = {
-    bot.setUpdatesListener(new MoodUpdatesListener)
-    Console.in.readLine()
-    bot.shutdown()
-  }
+trait ChatState {
+  val state: collection.mutable.Map[(Long,String), ConversationState] =
+    new collection.mutable.HashMap[(Long,String), ConversationState]()
+  def dropState(userId: String, chatId: Long) : Unit =
+    state -= ((chatId, userId))
+}
+trait Plotting(config: Conf) {
+  private val plotter: Plotter = Plotter(config)
+  def plotPNGToFile: String = plotter.plotPNGToFile
 }
 
-class MoodUpdatesListener extends UpdatesListener {
-  val db: Persistence = new Persistence(Config)
-  val bot: TelegramBot = MoodBot.bot
-  val state: collection.mutable.Map[(Long,String), State] = MoodBot.state
-  val plotter: Plotter = Plotter
+trait Persisting(config: Conf) {
+  val db = new Persistence(config)
+}
+
+trait Messenger(config: Conf) {
+  def execute: SendResponse = ???
+}
+
+class MoodBot(config: Conf) extends TelegramBot(Config.token)
+  with ChatState
+  with Plotting(config)
+  with Persisting(config):
+  private val updatesListener = new MoodUpdatesListener(config)
+  def init(): Unit =
+    setUpdatesListener(updatesListener)
+    System.out.println("Press enter to shutdown...")
+
+  def awaitTermination(): Unit =
+    Using.Manager {
+      using =>
+        val isr = using(new InputStreamReader(System.in))
+        val br = using(new BufferedReader(isr))
+        br.readLine()
+    }
+    System.out.println("Stopping...")
+    shutdown()
+
+class MoodUpdatesListener(config: Conf) extends UpdatesListener
+  with ChatState
+  with Plotting(config)
+  with Persisting(config) {
   private val logger = Logger(getClass.getName)
-  private val failedUpdates: util.concurrent.SynchronousQueue[Int] = new SynchronousQueue[Int]()
+  private val failedUpdates: util.concurrent.SynchronousQueue[Update] = new SynchronousQueue()
+
   override def process(updates: util.List[Update]): Int = {
     updates.asScala.map(processSingle)
     UpdatesListener.CONFIRMED_UPDATES_ALL
@@ -57,13 +94,14 @@ class MoodUpdatesListener extends UpdatesListener {
       new InlineKeyboardButton("\ud83d\ude29")
     ))
     response.replyMarkup(keyboard)
-    state((chatId, userId)) = State.SentMessage
     bot.execute(response)
+    state((chatId, userId)) = ConversationState.SentMessage
   }
+
   def showPlotPre(chatId: Long, userId: String): Unit = {
     val req = new SendMessage(chatId, "введите даты (начала и конца) в формате 'дд.мм.гггг дд.мм.гггг'")
     bot.execute(req)
-    state((chatId, userId)) = State.SentPlotRequest
+    state((chatId, userId)) = ConversationState.SentPlotRequest
   }
 
   def showPlot(chatId: Long, userId: String, from: Timestamp, to: Timestamp): Unit = {
@@ -74,55 +112,62 @@ class MoodUpdatesListener extends UpdatesListener {
   def showHistoryPre(chatId: Long, userId: String): Unit = {
     val req = new SendMessage(chatId, "введите даты (начала и конца) в формате 'дд.мм.гггг дд.мм.гггг'")
     bot.execute(req)
-    state((chatId, userId)) = State.SentHistoryRequest
+    state((chatId, userId)) = ConversationState.SentHistoryRequest
   }
 
   def showHistory(chatId: Long, userId: String, dateFrom: Timestamp, dateTo: Timestamp): Unit = {
     val messages = db.getHistory(chatId, userId, dateFrom, dateTo)
     messages.foreach(m =>
-      val time = m.reportedTime != null ? m.reportedTime : m.creationTimestamp
-      val timeFormatted = DateTimeFormatter.BASIC_ISO_DATE.toFormat().format(time)
+      val timeFormatted = formatTime(m)
       val msg = new SendMessage(chatId, s"$timeFormatted \n ${m.messageText}")
       bot.execute(msg)
     )
-    state((chatId, userId)) = State.Base
+    state((chatId, userId)) = ConversationState.Base
   }
 
-  def reattach(chatId: Long, userId: String, text: String): Unit = {
+  private def formatTime(m: Message): String = {
+    val time = if m.reportedTime != null then m.reportedTime else m.creationTimestamp
+    DateTimeFormatter.BASIC_ISO_DATE.toFormat().format(time)
+  }
+
+  def recordOnSpecificTimePre(chatId: Long, userId: String, text: String): Unit = {
     ???
   }
 
-  def menu(chatId: Long, userId: String): Unit = {
-    val menuMsg = new SendMessage(chatId, Config.menuText)
+  def menu(chatId: Long, userId: String, introText: String): Unit = {
+    val menuMsg = new SendMessage(chatId, introText)
     bot.execute(menuMsg)
-    state((chatId, userId)) = State.Base
+    state((chatId, userId)) = ConversationState.Base
   }
 
   def recordMark(chatId: Long, userId: String, mark: String): Unit =
-    if state((chatId, userId)) == State.SentMessage then {
-    val markNum = mark match
-      case "\ud83d\ude01" => 2
-      case "☺️" => 1
-      case "\ud83d\ude10" => 0
-      case "\ud83d\ude15" => -1
-      case "\ud83d\ude01" => -2
-    db.saveMark(chatId, userId, markNum)
-    state((chatId, userId)) = State.Base
-  }
+    if state((chatId, userId)) == ConversationState.SentMessage then 
+      val markNum = mark match
+        case "\ud83d\ude01" => 2
+        case "☺️" => 1
+        case "\ud83d\ude10" => 0
+        case "\ud83d\ude15" => -1
+        case "\ud83d\ude01" => -2
+      db.saveMark(chatId, userId, markNum)
+      state((chatId, userId)) = ConversationState.Base
+    
 
   def guessCommand(text: String): (Long, String) => Unit = {
-    val firstWord = text.split(" +" )(0).trim().toLowerCase().replace("/","")
+    val firstWord = text.split(" +")(0).trim().toLowerCase().replace("/", "")
     firstWord match {
-      case mark:("\ud83d\ude01"|"☺️"|"\ud83d\ude10"|"\ud83d\ude15"|"\ud83d\ude29") =>
+      case mark: ("\ud83d\ude01" | "☺️" | "\ud83d\ude10" | "\ud83d\ude15" | "\ud83d\ude29") =>
         (chatId: Long, userId: String) => recordMark(chatId, userId, mark)
-      case "start"|"старт" => (chatId: Long, userId: String) => menu(chatId,userId)
-      case "график"|"plot" => (chatId: Long, userId: String) => showPlotPre(chatId, userId)
-      case "история"|"history" => (chatId: Long, userId: String) => showHistoryPre(chatId, userId)
-      case "%" => (chatId: Long, userId: String) => reattach(chatId, userId, text)
-      case _ => (chatId: Long, userId: String) => state((chatId, userId)) match
-        case State.SentPlotRequest => showPlot(chatId, userId, parseFrom(text), parseTo(text))
-        case State.Base => record(chatId, userId, text)
-        case State.SentHistoryRequest => showHistory(chatId, userId, parseFrom(text), parseTo(text))
+      case "start" | "старт" =>   (chatId: Long, userId: String) => menu(chatId, userId, config("menuText"))
+      case "cancel" | "отмена" => (chatId: Long, userId: String) => menu(chatId, userId, config("cancelText"))
+      case "график" | "plot" =>   (chatId: Long, userId: String) => showPlotPre(chatId, userId)
+      case "история" | "history" => (chatId: Long, userId: String) => showHistoryPre(chatId, userId)
+      case "%" => (chatId: Long, userId: String) => recordOnSpecificTimePre(chatId, userId, text)
+      case _ => (chatId: Long, userId: String) =>
+        state((chatId, userId)) match
+          case ConversationState.SentReattachRequest => recordOnSpecificTime(chatId, userId, text)
+          case ConversationState.SentPlotRequest => showPlot(chatId, userId, parseFrom(text), parseTo(text))
+          case ConversationState.Base => record(chatId, userId, text)
+          case ConversationState.SentHistoryRequest => showHistory(chatId, userId, parseFrom(text), parseTo(text))
     }
   }
 
@@ -148,18 +193,16 @@ class MoodUpdatesListener extends UpdatesListener {
     Timestamp.from(instant)
   }
 
-  def processSingle(update: Update): Int = { // this is atomic
-    try {
-      val com = guessCommand(update.message().text())
-      val userId = update.message().chat().username()
-      val chatId = update.message().chat().id()
-      com(chatId, userId)
-    } catch {
-      case x: Exception =>
+  private def processSingle(update: Update): Int = // this is atomic
+    val userId: Try[String] = Try(update.message().chat().username())
+    val chatId: Try[Long] = Try(update.message().chat().id())
+    val command = guessCommand(update.message().text())
+    try
+      command(chatId.get, userId.get)
+    catch
+      case x: Throwable =>
         logger.error(s"Exception occured processing update ${update.updateId()}: ${x.getMessage}", x)
-        failedUpdates.add(update.updateId())
+        dropState(userId = userId.get, chatId = chatId.get)
         UpdatesListener.CONFIRMED_UPDATES_NONE
-    }
     UpdatesListener.CONFIRMED_UPDATES_ALL
-  }
 }

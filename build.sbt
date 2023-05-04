@@ -1,10 +1,11 @@
 ThisBuild / version := "0.1.0-SNAPSHOT"
 
-ThisBuild / scalaVersion := "3.1.3"
+ThisBuild / scalaVersion := "3.2.2"
 
 lazy val root = (project in file("."))
   .settings(
-    name := "moodbot2"
+    name := "moodbot2",
+    version := "2.0"
   )
 
 libraryDependencies := Seq(
@@ -14,5 +15,6 @@ libraryDependencies := Seq(
   "ch.qos.logback"  %  "logback-classic" % "1.4.6",
   "org.jfree" % "jfreechart" % "1.5.4",
   "com.typesafe.scala-logging" %% "scala-logging" % "3.9.5",
+  "org.postgresql" % "postgresql" % "42.6.0",
   "com.github.pengrad" % "java-telegram-bot-api" % "6.7.0"
 )

@@ -1,4 +1,4 @@
-package ru.pangaia.moodbot2.persistence
+package ru.pangaia.moodbot2.data
 
 import java.sql.Timestamp
 import java.util.UUID

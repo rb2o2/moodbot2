@@ -11,7 +11,7 @@ trait Admin {
 
 trait User {
   var roles: Set[Role]
-  def send(text: Message): Unit
+  def sendTo(text: Message): Unit
   val id : String
 }
 
