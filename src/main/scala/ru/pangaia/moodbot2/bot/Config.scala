@@ -1,7 +1,7 @@
 package ru.pangaia.moodbot2.bot
 
 import java.nio.charset.StandardCharsets
-import java.util.Properties
+import java.util.{Properties, PropertyResourceBundle, ResourceBundle}
 import scala.io.Source
 
 object Config:
@@ -19,12 +19,10 @@ object Config:
   private def prop: String => String => String =
     profile =>
       key =>
-        val props =
-          val p = if profile.isEmpty then "" else "-" + profile
-          val stream = this
-            .getClass.getClassLoader
-            .getResourceAsStream(s"application$p.properties")
-          new Properties():
-            load(stream)
-            stream.close()
-        props.getProperty(key)
+        val p = if profile.isEmpty then "" else "-" + profile
+        val stream = this
+          .getClass.getClassLoader
+          .getResourceAsStream(s"application$p.conf")
+        val resourceBundle = new PropertyResourceBundle(stream)
+        stream.close()
+        resourceBundle.getString(key)

@@ -12,8 +12,7 @@ class ConfigTest extends AnyFlatSpec:
 
 
   "menu.text property" should "be read properly from properties file" in {
-    val resourceBundle = new PropertyResourceBundle(getClass.getClassLoader.getResourceAsStream("application-test.conf"))
-    val greeting = resourceBundle.getString("menu.text")
+    val greeting = config("menu.text")
     assert(greeting(0) === 'П')
     assert(greeting.split("\\n").length === 2)
   }
