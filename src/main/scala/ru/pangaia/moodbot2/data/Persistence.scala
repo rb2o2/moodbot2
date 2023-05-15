@@ -1,12 +1,16 @@
 package ru.pangaia.moodbot2.data
 
 import ru.pangaia.moodbot2.bot.{Conf, Config}
-import scalikejdbc.{DB, DBSession, scalikejdbcSQLInterpolationImplicitDef}
+import scalikejdbc.*
+import org.postgresql.Driver
 
 import java.nio.charset.StandardCharsets
 import java.sql.Timestamp
 import java.util.{Base64, UUID}
 class Persistence(config: Conf) {
+  Class.forName("org.postgresql.Driver")
+  ConnectionPool.singleton(config("db.url"), config("db.user"), config("db.pw"))
+
   private def sanitize(str: String): String =
     Base64.getEncoder.encodeToString(str.getBytes(StandardCharsets.UTF_8))
 

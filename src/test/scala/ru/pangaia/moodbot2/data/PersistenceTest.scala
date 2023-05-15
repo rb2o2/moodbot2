@@ -9,9 +9,7 @@ import java.sql.{DriverManager, Timestamp}
 import java.time.Instant
 
 class PersistenceTest extends AnyFlatSpec {
-  Class.forName("org.postgresql.Driver")
   val config: Conf = Config("test")
-  ConnectionPool.singleton(config("db.url"), config("user"), config("pw"))
   val persistence = new Persistence(config)
   
   "getHistory" should "contain message saved previously" in {

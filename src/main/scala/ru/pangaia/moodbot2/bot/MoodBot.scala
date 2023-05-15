@@ -24,18 +24,16 @@ import scala.util.{Try, Using}
 
 type Conf = String => String
 
-@main
-def main(args: String*): Unit =
-  val profile = Try(args(0)).getOrElse("dev")
-  val config = Config(profile)
-  val bot = new MoodBot(config)
-  val handler = new MoodUpdatesListener(config, bot)
-  bot.setUpdatesListener(handler)
-  bot.init()
-  bot.awaitTermination()
-
-class MoodBot(config: Conf) extends TelegramBot(config("token"))
-  with ChatState
+object MoodBot:
+  def main(args: Array[String]): Unit =
+    val profile = Try(args(0)).getOrElse("dev")
+    val config = Config(profile)
+    val bot = new MoodBot(config)
+    val handler = new MoodUpdatesListener(config, bot)
+    bot.setUpdatesListener(handler)
+    bot.init()
+    bot.awaitTermination()
+class MoodBot(config: Conf) extends TelegramBot(config("token")) with ChatState
   with Plotting(config)
   with Persisting(config):
   def init(): Unit =
@@ -50,6 +48,7 @@ class MoodBot(config: Conf) extends TelegramBot(config("token"))
     }
     System.out.println("Stopping...")
     shutdown()
+    System.exit(0)
 
 class MoodUpdatesListener(config: Conf, bot: MoodBot) extends UpdatesListener
   with ChatState
@@ -108,10 +107,11 @@ class MoodUpdatesListener(config: Conf, bot: MoodBot) extends UpdatesListener
 
   def recordOnSpecificTimePre(chatId: Long, userId: String, text: String): Unit =
     ???
+    //todo implement
 
   def recordOnSpecificTime(l: Long, str: String, str1: String): Unit =
     ???
-
+    //todo implement
 
   def menu(chatId: Long, userId: String, introText: String): Unit =
     val menuMsg = new SendMessage(chatId, introText)
@@ -162,7 +162,7 @@ class MoodUpdatesListener(config: Conf, bot: MoodBot) extends UpdatesListener
     val fromYear = fromText(2).toInt
     val date = LocalDate.of(fromYear, fromMonth, fromDayOfMonth)
     val instant = LocalDateTime.of(date, LocalTime.MIDNIGHT)
-      .toInstant(ZoneOffset.ofHours(3))
+      .toInstant(ZoneOffset.ofHours(config("zone.offset.default").toInt))
     Timestamp.from(instant)
   }
 
@@ -173,7 +173,7 @@ class MoodUpdatesListener(config: Conf, bot: MoodBot) extends UpdatesListener
     val toYear = toText(2).toInt
     val date = LocalDate.of(toYear, toMonth, toDayOfMonth)
     val instant = LocalDateTime.of(date, LocalTime.MIDNIGHT)
-      .toInstant(ZoneOffset.ofHours(3))
+      .toInstant(ZoneOffset.ofHours(config("zone.offset.default").toInt))
     Timestamp.from(instant)
   }
 
