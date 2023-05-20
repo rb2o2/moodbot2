@@ -14,7 +14,7 @@ class Persistence(config: Conf) {
   private def sanitize(str: String): String =
     Base64.getEncoder.encodeToString(str.getBytes(StandardCharsets.UTF_8))
 
-  def unsane(base: String): String =
+  private def unsane(base: String): String =
     new String(Base64.getDecoder.decode(base), StandardCharsets.UTF_8)
 
   def saveMessage(chatId: Long, user: String, text: String): Unit =
@@ -32,6 +32,23 @@ class Persistence(config: Conf) {
           .update
           .apply()
     }
+
+  def saveMessageToDateTime(chatId: Long, user: String, text: String, ts: Timestamp): Unit =
+    saveUserIfNotExists(user)
+    val id = UUID.randomUUID()
+    val userSane = sanitize(user)
+    val textSane = sanitize(text)
+    DB.autoCommit {
+      implicit session: DBSession =>
+        sql"""insert into message (id, user_id, message_text, creation_timestamp, reported_time) values 
+              ($id::uuid,
+               (select users.id from users where users.username = $userSane),
+               $textSane,
+               current_timestamp,
+               $ts);"""
+          .update.apply()
+    }
+    
   def getUserId(username: String): Option[UUID] =
     val userSane = sanitize(username)
     DB.readOnly {
@@ -89,7 +106,7 @@ class Persistence(config: Conf) {
           .apply()
     }
 
-  def saveUserIfNotExists(userNameInsane: String): Unit =
+  private def saveUserIfNotExists(userNameInsane: String): Unit =
     val userSane = sanitize(userNameInsane)
     val id = UUID.randomUUID()
     DB.autoCommit {

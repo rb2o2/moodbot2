@@ -5,7 +5,7 @@ import java.util.{Properties, PropertyResourceBundle, ResourceBundle}
 import scala.io.Source
 
 object Config:
-  val token: String =
+  private val token: String =
     val stream = getClass.getClassLoader.getResourceAsStream("token")
     val res = new String(stream.readAllBytes(), StandardCharsets.UTF_8)
     stream.close()
