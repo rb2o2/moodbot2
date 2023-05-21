@@ -37,7 +37,7 @@ class Plotter(config: Conf) {
     })
     plot.setBackgroundPaint(Color.WHITE)
     plot.getPlot.setBackgroundPaint(Color.WHITE)
-    val tmp = config("plot.filename.tmpdir")
+    val tmp = config("plot.filename.tmpdir").orElse(System.getenv("TEMP"))
     val filename = UUID.randomUUID().toString
     val file = new File(s"$tmp/$filename.png")
     ChartUtils.saveChartAsPNG(file, plot, 800, 300)

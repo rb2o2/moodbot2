@@ -2,13 +2,15 @@ package ru.pangaia.moodbot2.bot
 
 import com.pengrad.telegrambot.UpdatesListener
 import com.pengrad.telegrambot.model.Update
-import com.pengrad.telegrambot.model.request.{InlineKeyboardButton, InlineKeyboardMarkup}
+import com.pengrad.telegrambot.model.request.{InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup}
 import com.pengrad.telegrambot.request.{SendMessage, SendPhoto}
 import com.typesafe.scalalogging.Logger
 import ru.pangaia.moodbot2.data.Message
+import ru.pangaia.moodbot2.TimeUtils
 
 import java.io.IOException
 import java.sql.{SQLException, Timestamp}
+import java.text.SimpleDateFormat
 import java.time.format.DateTimeFormatter
 import java.time.*
 import java.util
@@ -32,8 +34,8 @@ class MoodUpdatesListener(config: Conf, bot: MoodBot) extends UpdatesListener
   private def processSingle(update: Update): Int =
     val userId: Try[String] = Try(update.message().chat().username())
     val chatId: Try[Long] = Try(update.message().chat().id())
-    val command = guessCommand(update.message().text())
     try
+      val command = guessCommand(update.message().text())
       command(chatId.get, userId.get)
     catch
       case x: Exception =>
@@ -44,6 +46,7 @@ class MoodUpdatesListener(config: Conf, bot: MoodBot) extends UpdatesListener
 
   private def guessCommand(text: String): (Long, String) => Unit =
     val firstWord = text.split(" +")(0).trim().toLowerCase().replace("/", "")
+    val tz: Int = Try(config("zone.offset.default").toInt).getOrElse(3)
     try
       firstWord match
         case mark: ("\ud83d\ude01" | "☺️" | "\ud83d\ude10" | "\ud83d\ude15" | "\ud83d\ude29") =>
@@ -73,13 +76,19 @@ class MoodUpdatesListener(config: Conf, bot: MoodBot) extends UpdatesListener
           =>
           Try(state((chatId, userId))) match
             case Success((ConversationState.SentReattachRequest, head :: _)) =>
-              recordOnSpecificTime(chatId, userId, head.toString, parseDateTime(text))
+              recordOnSpecificTime(chatId, userId, head.toString,
+                TimeUtils.parseDateTime(text, tz))
             case Success((ConversationState.SentPlotRequest, _)) =>
-              showPlot(chatId, userId, parseFrom(text), parseTo(text))
+              showPlot(chatId, userId, TimeUtils.parseFrom(text, tz),
+                TimeUtils.parseTo(text, tz))
             case Success((ConversationState.Base, _)) | Failure(_) =>
               record(chatId, userId, text)
             case Success((ConversationState.SentHistoryRequest, _)) =>
-              showHistory(chatId, userId, parseFrom(text), parseTo(text))
+              showHistory(chatId, userId,
+                TimeUtils.parseFrom(text, tz),
+                TimeUtils.parseTo(text, tz))
+              dropState(userId, chatId)
+            case Success((ConversationState.SentMessage, _)) =>
               dropState(userId, chatId)
             case x@_ =>
               logger.warn(s"Unknown chat #($chatId) state: $x")
@@ -93,13 +102,13 @@ class MoodUpdatesListener(config: Conf, bot: MoodBot) extends UpdatesListener
   def record(chatId: Long, userId: String, text: String): Unit =
     db.saveMessage(chatId, userId, text)
     val response = new SendMessage(chatId, "оцените настроение")
-    val keyboard = new InlineKeyboardMarkup(Array(
-      new InlineKeyboardButton("\ud83d\ude01"),
-      new InlineKeyboardButton("☺️"),
-      new InlineKeyboardButton("\ud83d\ude10"),
-      new InlineKeyboardButton("\ud83d\ude15"),
-      new InlineKeyboardButton("\ud83d\ude29")
-    ))
+    val keyboard = new ReplyKeyboardMarkup(Array(
+      new KeyboardButton("\ud83d\ude01"),
+      new KeyboardButton("☺️"),
+      new KeyboardButton("\ud83d\ude10"),
+      new KeyboardButton("\ud83d\ude15"),
+      new KeyboardButton("\ud83d\ude29")
+    )).oneTimeKeyboard(true)
     response.replyMarkup(keyboard)
     execute(response)
     state((chatId, userId)) = (ConversationState.SentMessage, List())
@@ -142,7 +151,7 @@ class MoodUpdatesListener(config: Conf, bot: MoodBot) extends UpdatesListener
     try
       val messages = db.getHistory(chatId, userId, dateFrom.get, dateTo.get)
       messages.foreach(m =>
-        val timeFormatted = formatTime(m)
+        val timeFormatted = TimeUtils.formatTime(m)
         val msg = new SendMessage(chatId, s"$timeFormatted \n${m.messageText}")
         execute(msg)
       )
@@ -174,42 +183,14 @@ class MoodUpdatesListener(config: Conf, bot: MoodBot) extends UpdatesListener
     execute(menuMsg)
 
   private def recordMark(chatId: Long, userId: String, mark: String): Unit =
-    if state((chatId, userId)) == (ConversationState.SentMessage, List()) then
-      val markNum = mark match
-        case "\ud83d\ude01" => 2
-        case "☺️" => 1
-        case "\ud83d\ude10" => 0
-        case "\ud83d\ude15" => -1
-        case "\ud83d\ude01" => -2
-        case _ =>
-          execute(new SendMessage(chatId, "оценка не распознана :("))
-          -100
+    val markNum = mark match
+      case "\ud83d\ude01" => 2
+      case "☺️" => 1
+      case "\ud83d\ude10" => 0
+      case "\ud83d\ude15" => -1
+      case "\ud83d\ude01" => -2
+      case _ =>
+        execute(new SendMessage(chatId, "оценка не распознана :("))
+        -100
       db.saveMark(chatId, userId, markNum)
-      state((chatId, userId)) = (ConversationState.Base, List())
-
-  private def formatTime(m: Message): String =
-    val time = if m.reportedTime != null then m.reportedTime else m.creationTimestamp
-    DateTimeFormatter.BASIC_ISO_DATE.toFormat().format(time)
-
-  private def parseDateTime(dt: String): Try[Timestamp] =
-    Try(Timestamp.from(
-      LocalDateTime.from(DateTimeFormatter.ofPattern("dd.MM.yyyy HH-mm").parse(dt))
-        .toInstant(ZoneOffset.ofHours(config("zone.offset.default").toInt))))
-
-  private def parseFrom(text: String): Try[Timestamp] =
-    val fromText = text.split(" +")(0)
-    Try(dateToTimestamp(fromText))
-
-  private def parseTo(text: String): Try[Timestamp] =
-    val toText = Try(text.split(" +")(1))
-    toText.map(dateToTimestamp)
-
-  private def dateToTimestamp(d: String): Timestamp =
-    val toText = d.split("\\.")
-    val toDayOfMonth = toText(0).toInt
-    val toMonth = toText(1).toInt
-    val toYear = toText(2).toInt
-    val date = LocalDate.of(toYear, toMonth, toDayOfMonth)
-    val instant = LocalDateTime.of(date, LocalTime.MIDNIGHT)
-      .toInstant(ZoneOffset.ofHours(config("zone.offset.default").toInt))
-    Timestamp.from(instant)
+      dropState(userId, chatId)

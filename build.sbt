@@ -20,3 +20,11 @@ libraryDependencies := Seq(
   "org.jfree" % "jfreechart" % "1.5.4",
   "com.github.pengrad" % "java-telegram-bot-api" % "6.7.0"
 )
+
+assembly / assemblyMergeStrategy := {
+  case PathList("module-info.class") => MergeStrategy.last
+  case path if path.endsWith("/module-info.class") => MergeStrategy.last
+  case x =>
+    val oldStrategy = (assembly / assemblyMergeStrategy).value
+    oldStrategy(x)
+}

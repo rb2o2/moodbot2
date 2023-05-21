@@ -46,7 +46,8 @@ class Persistence(config: Conf) {
                $textSane,
                current_timestamp,
                $ts);"""
-          .update.apply()
+          .update
+          .apply()
     }
     
   def getUserId(username: String): Option[UUID] =
@@ -60,15 +61,16 @@ class Persistence(config: Conf) {
     }
 
   def saveMark(chatId: Long, user: String, mark: Int): Unit =
+    saveUserIfNotExists(user)
     val userSane = sanitize(user)
     val id = UUID.randomUUID()
     DB.autoCommit {
       implicit session: DBSession =>
         sql"""insert into mark (id, user_id, mark_value, creation_timestamp) values
              ($id::uuid,
-              select id from users where users.username = $userSane,
+              (select id from users where users.username = $userSane),
               $mark,
-              timestamp());"""
+              current_timestamp);"""
           .update
           .apply()
     }
@@ -76,9 +78,11 @@ class Persistence(config: Conf) {
     val userSane = sanitize(username)
     DB.readOnly {
       implicit session: DBSession =>
-        sql"""select * from message
-             where message.user_id = (select id from users where users.username = $userSane) and
-                   message.creation_timestamp <= $to and creation_timestamp >= $from;"""
+        sql"""select * from message where
+                          message.user_id = (select users.id from users where users.username = $userSane) and
+                   coalesce(message.reported_time, message.creation_timestamp) <= $to and
+                   coalesce(message.reported_time, message.creation_timestamp) >= $from
+             order by coalesce(message.reported_time, message.creation_timestamp) asc;"""
           .map(rs => Message(
             UUID.fromString(rs.string("id")),
             UUID.fromString(rs.string("user_id")),
@@ -95,7 +99,8 @@ class Persistence(config: Conf) {
       implicit session: DBSession =>
         sql"""select * from mark
              where mark.user_id = (select id from users where users.username = $userSane) and
-                   mark.creation_timestamp <= $to and mark.creation_timestamp >= $from;"""
+                   mark.creation_timestamp <= $to and mark.creation_timestamp >= $from
+                order by mark.creation_timestamp asc;"""
           .map(rs => Mark(
             UUID.fromString(rs.string("id")),
             UUID.fromString(rs.string("user_id")),
