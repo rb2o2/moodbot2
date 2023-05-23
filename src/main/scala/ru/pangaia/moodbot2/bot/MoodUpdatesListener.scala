@@ -7,6 +7,7 @@ import com.pengrad.telegrambot.request.{SendMessage, SendPhoto}
 import com.typesafe.scalalogging.Logger
 import ru.pangaia.moodbot2.data.Message
 import ru.pangaia.moodbot2.TimeUtils
+import ru.pangaia.moodbot2.plot.NoDataInPlotRangeException
 
 import java.io.IOException
 import java.sql.{SQLException, Timestamp}
@@ -126,6 +127,11 @@ class MoodUpdatesListener(config: Conf, bot: MoodBot) extends UpdatesListener
       execute(req)
       dropState(userId, chatId)
     catch
+      case x: NoDataInPlotRangeException =>
+        logger.warn(s"Data range ${from.get} - ${to.get} is empty")
+        dropState(userId, chatId)
+        val msg = new SendMessage(chatId, "За этот период нет оценок")
+        execute(msg)
       case x : (ArrayIndexOutOfBoundsException | DateTimeException) =>
         logger.error(s"Error parsing dates in chat#$chatId: ${x.getMessage}", x)
         val errMsg = new SendMessage(chatId, "Неверный формат дат")

@@ -23,7 +23,8 @@ class TimeUtilsTest extends AnyFlatSpec {
     val simpleTime = Timestamp.from(Instant.now().minus(2L, ChronoUnit.DAYS))
 
     val messageOne = Message(UUID.randomUUID(), UUID.randomUUID(), "test", simpleTime, Some(reattachTime))
-    assert(TimeUtils.formatTime(messageOne) === "2022-01-01 20:02")
+    val formatted =TimeUtils.formatTime(messageOne)
+    assert(formatted === "2022-01-01 20:02", s"$formatted <> '2022-01-01 20:02'")
   }
 
   "parseDateTime" should "parse proper ts when argument is formatted properly and vice versa" in {
@@ -33,11 +34,11 @@ class TimeUtilsTest extends AnyFlatSpec {
     assert(TimeUtils.parseDateTime(proper, zoneHrs) match {
       case Success(_) => true
       case _ => false
-    })
+    }, s"$proper unsuccessfully parsed")
     assert(TimeUtils.parseDateTime(improper, zoneHrs) match {
       case Success(_) => false
       case _ => true
-    })
+    }, s"$improper succcessfully parsed")
   }
 
   "parseFrom & parseTo" should "parse proper timestamp when argument is formatted properly and vice versa" in {
@@ -47,11 +48,15 @@ class TimeUtilsTest extends AnyFlatSpec {
       "47.12.00 12.19.1999",
       "000.000.00 61.11.1999"
     )
-    assert(TimeUtils.parseFrom(proper, zoneHrs) match {case Success(_) => true case _ => false})
-    assert(TimeUtils.parseTo(proper, zoneHrs) match {case Success(_) => true case _ => false})
+    assert(TimeUtils.parseFrom(proper, zoneHrs) match {case Success(_) => true case _ => false},
+      s"$proper not parsed")
+    assert(TimeUtils.parseTo(proper, zoneHrs) match {case Success(_) => true case _ => false},
+      s"$proper not parsed")
     for (i <- improper) {
-      assert(TimeUtils.parseFrom(i, zoneHrs) match {case Failure(_) => true case _ => false})
-      assert(TimeUtils.parseTo(i, zoneHrs) match {case Failure(_) => true case _ => false})
+      assert(TimeUtils.parseFrom(i, zoneHrs) match {case Failure(_) => true case _ => false},
+      s"$i parsed successfully")
+      assert(TimeUtils.parseTo(i, zoneHrs) match {case Failure(_) => true case _ => false},
+        s"$i parsed successfully")
     }
   }
 }

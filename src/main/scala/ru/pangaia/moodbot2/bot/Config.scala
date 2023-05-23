@@ -25,7 +25,4 @@ object Config:
           .getResourceAsStream(s"application$p.conf")
         val resourceBundle = new PropertyResourceBundle(stream)
         stream.close()
-        try
           resourceBundle.getString(key)
-        catch
-          case x: Exception => ""
