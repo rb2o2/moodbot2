@@ -26,7 +26,7 @@ object TimeUtils {
     val toText = Try(text.split(" +")(1))
     toText.map(dateToTimestamp(_, tzOffsetHours))
 
-  def dateToTimestamp(d: String, tzOffsetHours: Int): Timestamp =
+  private def dateToTimestamp(d: String, tzOffsetHours: Int): Timestamp =
     val toText = d.split("\\.")
     val toDayOfMonth = toText(0).toInt
     val toMonth = toText(1).toInt
