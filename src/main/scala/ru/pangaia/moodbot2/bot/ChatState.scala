@@ -5,5 +5,5 @@ trait ChatState:
   val state: State =
     new collection.mutable.HashMap[(Long, String), (ConversationState, Context)]()
 
-  def dropState(userId: String, chatId: Long): Unit =
+  def dropState(chatId: Long, userId: String): Unit =
     state --= Seq((chatId, userId))

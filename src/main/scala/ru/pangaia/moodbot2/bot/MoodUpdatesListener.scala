@@ -1,12 +1,14 @@
 package ru.pangaia.moodbot2.bot
 
 import com.pengrad.telegrambot.UpdatesListener
+import com.pengrad.telegrambot.BotUtils
 import com.pengrad.telegrambot.model.Update
 import com.pengrad.telegrambot.model.request.{InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup}
 import com.pengrad.telegrambot.request.{SendMessage, SendPhoto}
 import com.typesafe.scalalogging.Logger
 import ru.pangaia.moodbot2.data.Message
 import ru.pangaia.moodbot2.TimeUtils
+import ru.pangaia.moodbot2.plot.NoDataInPlotRangeException
 
 import java.io.IOException
 import java.sql.{SQLException, Timestamp}
@@ -25,13 +27,14 @@ class MoodUpdatesListener(config: Conf, bot: MoodBot) extends UpdatesListener
   with Persisting(config)
   with Messenger(config, bot):
   private val logger = Logger(getClass.getName)
+  logger.debug("Logger initialized")
   private val failedUpdates: util.concurrent.SynchronousQueue[Update] = new SynchronousQueue()
 
   override def process(updates: util.List[Update]): Int =
-    updates.asScala.map(processSingle)
-    UpdatesListener.CONFIRMED_UPDATES_ALL
+    updates.asScala.map(processSingle).last
 
-  private def processSingle(update: Update): Int =
+  def processSingle(update: Update): Int =
+    logger.warn(BotUtils.toJson(update))
     val userId: Try[String] = Try(update.message().chat().username())
     val chatId: Try[Long] = Try(update.message().chat().id())
     try
@@ -42,7 +45,7 @@ class MoodUpdatesListener(config: Conf, bot: MoodBot) extends UpdatesListener
         logger.error(s"Exception occurred while processing update ${update.updateId()}: ${x.getMessage}", x)
         failedUpdates.put(update)
         UpdatesListener.CONFIRMED_UPDATES_NONE
-    UpdatesListener.CONFIRMED_UPDATES_ALL
+    update.updateId()
 
   private def guessCommand(text: String): (Long, String) => Unit =
     val firstWord = text.split(" +")(0).trim().toLowerCase().replace("/", "")
@@ -53,17 +56,17 @@ class MoodUpdatesListener(config: Conf, bot: MoodBot) extends UpdatesListener
           (chatId: Long, userId: String)
           =>
           recordMark(chatId, userId, mark)
-          dropState(userId, chatId)
+          dropState(chatId, userId)
         case "start" | "старт" =>
           (chatId: Long, userId: String)
           =>
           menu(chatId, userId, config("menu.text"))
-          dropState(userId, chatId)
+          dropState(chatId, userId)
         case "cancel" | "отмена" =>
           (chatId: Long, userId: String)
           =>
           menu(chatId, userId, config("cancel.text"))
-          dropState(userId, chatId)
+          dropState(chatId, userId)
         case "график" | "plot" => (chatId: Long, userId: String)
           => showPlotAskPeriod(chatId, userId)
         case "история" | "history" => (chatId: Long, userId: String)
@@ -87,19 +90,20 @@ class MoodUpdatesListener(config: Conf, bot: MoodBot) extends UpdatesListener
               showHistory(chatId, userId,
                 TimeUtils.parseFrom(text, tz),
                 TimeUtils.parseTo(text, tz))
-              dropState(userId, chatId)
+              dropState(chatId, userId)
             case Success((ConversationState.SentMessage, _)) =>
-              dropState(userId, chatId)
+              dropState(chatId, userId)
             case x@_ =>
               logger.warn(s"Unknown chat #($chatId) state: $x")
     catch
       case x: RuntimeException =>
         (chatId: Long, userId: String)
         =>
-        dropState(userId, chatId)
+        dropState(chatId, userId)
         logger.error(x.getMessage, x)
+        throw x
 
-  def record(chatId: Long, userId: String, text: String): Unit =
+  private def record(chatId: Long, userId: String, text: String): Unit =
     db.saveMessage(chatId, userId, text)
     val response = new SendMessage(chatId, "оцените настроение")
     val keyboard = new ReplyKeyboardMarkup(Array(
@@ -124,8 +128,13 @@ class MoodUpdatesListener(config: Conf, bot: MoodBot) extends UpdatesListener
       val imageFilePath = plotPNGToFile(marks)
       val req = new SendPhoto(chatId, new java.io.File(imageFilePath))
       execute(req)
-      dropState(userId, chatId)
+      dropState(chatId, userId)
     catch
+      case _ : NoDataInPlotRangeException =>
+        logger.warn(s"Data range ${from.get} - ${to.get} is empty")
+        dropState(chatId, userId)
+        val msg = new SendMessage(chatId, "За этот период нет оценок")
+        execute(msg)
       case x : (ArrayIndexOutOfBoundsException | DateTimeException) =>
         logger.error(s"Error parsing dates in chat#$chatId: ${x.getMessage}", x)
         val errMsg = new SendMessage(chatId, "Неверный формат дат")
@@ -134,12 +143,12 @@ class MoodUpdatesListener(config: Conf, bot: MoodBot) extends UpdatesListener
       case x : IOException =>
         logger.error(s"IO error while plotting in chat#$chatId: ${x.getMessage}", x)
         val errMsg = new SendMessage(chatId, "Не могу построить график")
-        dropState(userId, chatId)
+        dropState(chatId, userId)
         execute(errMsg)
       case x : Exception =>
         logger.error(s"Unknown error: ${x.getMessage}", x)
         val errMsg = new SendMessage(chatId, "Ошибка! :(")
-        dropState(userId, chatId)
+        dropState(chatId, userId)
         execute(errMsg)
 
   private def showHistoryAskPeriod(chatId: Long, userId: String): Unit =
@@ -163,7 +172,7 @@ class MoodUpdatesListener(config: Conf, bot: MoodBot) extends UpdatesListener
         showHistoryAskPeriod(chatId, userId)
       case x: Exception =>
         logger.error(x.getMessage, x)
-        dropState(userId, chatId)
+        dropState(chatId, userId)
 
   private def recordOnSpecificAskDateTime(chatId: Long, userId: String, text: String): Unit =
     val req = new SendMessage(chatId, "На какую дату и время перенести? Введите в формате дд.мм.гггг чч-мм")
@@ -175,7 +184,7 @@ class MoodUpdatesListener(config: Conf, bot: MoodBot) extends UpdatesListener
       db.saveMessageToDateTime(chatId, userId, msg, ts.get)
     catch
       case x : Exception =>
-        dropState(userId, chatId)
+        dropState(chatId, userId)
         logger.error(x.getMessage, x)
 
   private def menu(chatId: Long, userId: String, introText: String): Unit =
@@ -188,9 +197,9 @@ class MoodUpdatesListener(config: Conf, bot: MoodBot) extends UpdatesListener
       case "☺️" => 1
       case "\ud83d\ude10" => 0
       case "\ud83d\ude15" => -1
-      case "\ud83d\ude01" => -2
+      case "\ud83d\ude29" => -2
       case _ =>
         execute(new SendMessage(chatId, "оценка не распознана :("))
         -100
       db.saveMark(chatId, userId, markNum)
-      dropState(userId, chatId)
+      dropState(chatId, userId)

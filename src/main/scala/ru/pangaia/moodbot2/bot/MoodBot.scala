@@ -33,6 +33,7 @@ object MoodBot:
     bot.setUpdatesListener(handler)
     bot.init()
     bot.awaitTermination()
+    
 class MoodBot(config: Conf) extends TelegramBot(config("token")):
   def init(): Unit =
     System.out.println("Press enter to shutdown...")
