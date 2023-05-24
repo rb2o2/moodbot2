@@ -15,7 +15,6 @@ class TimeUtilsTest extends AnyFlatSpec {
   val zoneHrs: Int = config("zone.offset.default").toInt
 
   "formatTime" should "properly format message time && return reattach ts when it is present" in {
-
     val reattachTime = Timestamp.from(
       LocalDateTime.of(LocalDate.of(2022, 1, 1),
         LocalTime.of(20, 2, 12, 157))
@@ -23,7 +22,7 @@ class TimeUtilsTest extends AnyFlatSpec {
     val simpleTime = Timestamp.from(Instant.now().minus(2L, ChronoUnit.DAYS))
 
     val messageOne = Message(UUID.randomUUID(), UUID.randomUUID(), "test", simpleTime, Some(reattachTime))
-    val formatted =TimeUtils.formatTime(messageOne)
+    val formatted = TimeUtils.formatTime(messageOne)
     assert(formatted === "2022-01-01 20:02", s"$formatted <> '2022-01-01 20:02'")
   }
 

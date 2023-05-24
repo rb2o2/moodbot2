@@ -14,7 +14,7 @@ lazy val root = (project in file("."))
 val testcontainersScalaVersion = "0.40.12"
 
 libraryDependencies := Seq(
-  "org.scalactic" %% "scalactic" % "3.2.15" % "test,it",
+  "org.scalactic" %% "scalactic" % "3.2.16" % "test,it",
   "org.scalatest" %% "scalatest" % "3.2.15" % "test,it",
   "org.scalikejdbc" %% "scalikejdbc" % "4.0.0",
   "org.postgresql" % "postgresql" % "42.6.0",
