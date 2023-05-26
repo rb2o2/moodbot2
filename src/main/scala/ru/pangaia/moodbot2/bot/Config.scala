@@ -25,4 +25,4 @@ object Config:
           .getResourceAsStream(s"application$p.conf")
         val resourceBundle = new PropertyResourceBundle(stream)
         stream.close()
-          resourceBundle.getString(key)
+        resourceBundle.getString(key)

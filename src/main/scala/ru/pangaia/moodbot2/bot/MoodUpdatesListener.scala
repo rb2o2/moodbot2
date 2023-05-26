@@ -1,25 +1,24 @@
 package ru.pangaia.moodbot2.bot
 
-import com.pengrad.telegrambot.UpdatesListener
-import com.pengrad.telegrambot.BotUtils
+import com.pengrad.telegrambot.{BotUtils, UpdatesListener}
 import com.pengrad.telegrambot.model.Update
 import com.pengrad.telegrambot.model.request.{InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup}
 import com.pengrad.telegrambot.request.{SendMessage, SendPhoto}
 import com.typesafe.scalalogging.Logger
-import ru.pangaia.moodbot2.data.Message
 import ru.pangaia.moodbot2.TimeUtils
+import ru.pangaia.moodbot2.data.Message
 import ru.pangaia.moodbot2.plot.NoDataInPlotRangeException
 
 import java.io.IOException
 import java.sql.{SQLException, Timestamp}
 import java.text.SimpleDateFormat
-import java.time.format.DateTimeFormatter
 import java.time.*
+import java.time.format.DateTimeFormatter
 import java.util
 import java.util.NoSuchElementException
-import java.util.concurrent.SynchronousQueue
-import scala.util.{Failure, Success, Try}
+import java.util.concurrent.{BlockingQueue, LinkedBlockingQueue}
 import scala.jdk.CollectionConverters.*
+import scala.util.{Failure, Success, Try}
 
 class MoodUpdatesListener(config: Conf, bot: MoodBot) extends UpdatesListener
   with ChatState
@@ -28,7 +27,7 @@ class MoodUpdatesListener(config: Conf, bot: MoodBot) extends UpdatesListener
   with Messenger(config, bot):
   private val logger = Logger(getClass.getName)
   logger.debug("Logger initialized")
-  private val failedUpdates: util.concurrent.SynchronousQueue[Update] = new SynchronousQueue()
+  private val failedUpdates: BlockingQueue[(Update, Throwable)] = new LinkedBlockingQueue()
 
   override def process(updates: util.List[Update]): Int =
     updates.asScala.map(processSingle).last
@@ -43,7 +42,7 @@ class MoodUpdatesListener(config: Conf, bot: MoodBot) extends UpdatesListener
     catch
       case x: Exception =>
         logger.error(s"Exception occurred while processing update ${update.updateId()}: ${x.getMessage}", x)
-        failedUpdates.put(update)
+        failedUpdates.put((update, x))
         UpdatesListener.CONFIRMED_UPDATES_NONE
     update.updateId()
 
