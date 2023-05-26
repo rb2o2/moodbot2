@@ -19,7 +19,6 @@ libraryDependencies := Seq(
   "org.mockito" % "mockito-core" % "5.2.0",
   "org.scalikejdbc" %% "scalikejdbc" % "4.0.0",
   "org.postgresql" % "postgresql" % "42.6.0",
-  "org.postgresql" % "r2dbc-postgresql" % "1.0.1.RELEASE",
   "ch.qos.logback"  %  "logback-classic" % "1.4.6",
   "com.typesafe.scala-logging" %% "scala-logging" % "3.9.5",
   "org.jfree" % "jfreechart" % "1.5.4",
