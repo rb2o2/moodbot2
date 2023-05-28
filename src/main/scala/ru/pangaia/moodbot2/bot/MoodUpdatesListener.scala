@@ -1,6 +1,6 @@
 package ru.pangaia.moodbot2.bot
 
-import com.pengrad.telegrambot.{BotUtils, UpdatesListener}
+import com.pengrad.telegrambot.{BotUtils, TelegramBot, UpdatesListener}
 import com.pengrad.telegrambot.model.Update
 import com.pengrad.telegrambot.model.request.{InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup}
 import com.pengrad.telegrambot.request.{SendMessage, SendPhoto}
@@ -14,26 +14,27 @@ import java.sql.{SQLException, Timestamp}
 import java.text.SimpleDateFormat
 import java.time.*
 import java.time.format.DateTimeFormatter
-import java.util
+import java.time.temporal.ChronoUnit
+import java.{sql, util}
 import java.util.NoSuchElementException
 import java.util.concurrent.{BlockingQueue, LinkedBlockingQueue}
 import scala.jdk.CollectionConverters.*
 import scala.util.{Failure, Success, Try}
 
-class MoodUpdatesListener(config: Conf, bot: MoodBot) extends UpdatesListener
+class MoodUpdatesListener(config: Conf, bot: TelegramBot) extends UpdatesListener
   with ChatState
   with Plotting(config)
   with Persisting(config)
   with Messenger(config, bot):
   private val logger = Logger(getClass.getName)
   logger.debug("Logger initialized")
-  private val failedUpdates: BlockingQueue[(Update, Throwable)] = new LinkedBlockingQueue()
+  private val failedUpdates: BlockingQueue[(Update, Exception)] = new LinkedBlockingQueue()
+  private val tz: Int = Try(config("zone.offset.default").toInt).getOrElse(3)
 
   override def process(updates: util.List[Update]): Int =
     updates.asScala.map(processSingle).last
 
   def processSingle(update: Update): Int =
-    logger.warn(BotUtils.toJson(update))
     val userId: Try[String] = Try(update.message().chat().username())
     val chatId: Try[Long] = Try(update.message().chat().id())
     try
@@ -43,64 +44,85 @@ class MoodUpdatesListener(config: Conf, bot: MoodBot) extends UpdatesListener
       case x: Exception =>
         logger.error(s"Exception occurred while processing update ${update.updateId()}: ${x.getMessage}", x)
         failedUpdates.put((update, x))
-        UpdatesListener.CONFIRMED_UPDATES_NONE
     update.updateId()
 
   private def guessCommand(text: String): (Long, String) => Unit =
-    val firstWord = text.split(" +")(0).trim().toLowerCase().replace("/", "")
-    val tz: Int = Try(config("zone.offset.default").toInt).getOrElse(3)
-    try
-      firstWord match
-        case mark: ("\ud83d\ude01" | "☺️" | "\ud83d\ude10" | "\ud83d\ude15" | "\ud83d\ude29") =>
-          (chatId: Long, userId: String)
-          =>
-          recordMark(chatId, userId, mark)
-          dropState(chatId, userId)
-        case "start" | "старт" =>
-          (chatId: Long, userId: String)
-          =>
-          menu(chatId, userId, config("menu.text"))
-          dropState(chatId, userId)
-        case "cancel" | "отмена" =>
-          (chatId: Long, userId: String)
-          =>
-          menu(chatId, userId, config("cancel.text"))
-          dropState(chatId, userId)
-        case "график" | "plot" => (chatId: Long, userId: String)
-          => showPlotAskPeriod(chatId, userId)
-        case "история" | "history" => (chatId: Long, userId: String)
-          => showHistoryAskPeriod(chatId, userId)
-        case "%" => (chatId: Long, userId: String)
-          =>
-          val message = text.stripPrefix("%").trim()
-          recordOnSpecificAskDateTime(chatId, userId, message)
-        case _ => (chatId: Long, userId: String)
-          =>
-          Try(state((chatId, userId))) match
-            case Success((ConversationState.SentReattachRequest, head :: _)) =>
-              recordOnSpecificTime(chatId, userId, head.toString,
-                TimeUtils.parseDateTime(text, tz))
-            case Success((ConversationState.SentPlotRequest, _)) =>
-              showPlot(chatId, userId, TimeUtils.parseFrom(text, tz),
-                TimeUtils.parseTo(text, tz))
-            case Success((ConversationState.Base, _)) | Failure(_) =>
-              record(chatId, userId, text)
-            case Success((ConversationState.SentHistoryRequest, _)) =>
-              showHistory(chatId, userId,
-                TimeUtils.parseFrom(text, tz),
-                TimeUtils.parseTo(text, tz))
-              dropState(chatId, userId)
-            case Success((ConversationState.SentMessage, _)) =>
-              dropState(chatId, userId)
-            case x@_ =>
-              logger.warn(s"Unknown chat #($chatId) state: $x")
-    catch
-      case x: RuntimeException =>
+    val firstWord = text.split(" +")(0).trim().replace("/", "")
+    val textRest = text.stripPrefix(firstWord).trim()
+    logger.info(s"Text rest = $textRest")
+    firstWord.toLowerCase() match
+      case ("start" | "старт" | "menu" | "меню") =>
         (chatId: Long, userId: String)
         =>
-        dropState(chatId, userId)
-        logger.error(x.getMessage, x)
-        throw x
+        menu(chatId, userId, config("menu.text"))
+      case "cancel" | "отмена" =>
+        (chatId: Long, userId: String)
+        =>
+        menu(chatId, userId, config("cancel.text"))
+      case "график" | "plot" => (chatId: Long, userId: String)
+        => {
+          val now = Timestamp.from(Instant.now())
+          textRest.toLowerCase() match
+            case ("все" | "all" | "всё") =>
+              val longAgo = new Timestamp(0)
+              showPlot(chatId, userId, Try(longAgo), Try(now))
+            case ("month" | "месяц") =>
+              val monthAgo = Timestamp.from(Instant.now().minus(30L, ChronoUnit.DAYS))
+              showPlot(chatId, userId, Try(monthAgo), Try(now))
+            case ("week" | "неделя") =>
+              val weekAgo = Timestamp.from(Instant.now().minus(7L, ChronoUnit.DAYS))
+              showPlot(chatId, userId, Try(weekAgo), Try(now))
+            case ("year" | "год") =>
+              val yearAgo = Timestamp.from(Instant.now().minus(365L, ChronoUnit.DAYS))
+              showPlot(chatId, userId, Try(yearAgo), Try(now))
+            case _ =>
+              showPlotAskPeriod(chatId, userId)
+        }
+      case "история" | "history" => (chatId: Long, userId: String)
+        =>
+        {
+          val now = Timestamp.from(Instant.now())
+          textRest.toLowerCase() match
+            case ("все" | "all" | "всё") =>
+              val longAgo = new Timestamp(0)
+              showHistory(chatId, userId, Try(longAgo), Try(now))
+            case ("month" | "месяц") =>
+              val monthAgo = Timestamp.from(Instant.now().minus(30L, ChronoUnit.DAYS))
+              showHistory(chatId, userId, Try(monthAgo), Try(now))
+            case ("week" | "неделя") =>
+              val weekAgo = Timestamp.from(Instant.now().minus(7L, ChronoUnit.DAYS))
+              showHistory(chatId, userId, Try(weekAgo), Try(now))
+            case ("year" | "год") =>
+              val yearAgo = Timestamp.from(Instant.now().minus(365L, ChronoUnit.DAYS))
+              showHistory(chatId, userId, Try(yearAgo), Try(now))
+            case _ =>
+              showHistoryAskPeriod(chatId, userId)
+        }
+      case "%" => (chatId: Long, userId: String)
+        =>
+        val message = textRest
+        recordOnSpecificAskDateTime(chatId, userId, message)
+      case _ => (chatId: Long, userId: String)
+        =>
+        Try(state((chatId, userId))) match
+          case Success(StateSeqElem(ConversationState.SentReattachRequest, lastMsg) :: _) =>
+            recordOnSpecificTime(chatId, userId, lastMsg,
+              TimeUtils.parseDateTime(text, tz))
+          case Success(StateSeqElem(ConversationState.SentPlotRequest, lastMsg) :: _) =>
+            showPlot(chatId, userId,
+              TimeUtils.parseFrom(text, tz),
+              TimeUtils.parseTo(text, tz))
+          case Failure(_) =>
+            record(chatId, userId, text)
+          case Success(StateSeqElem(ConversationState.SentHistoryRequest, lastMsg) :: _) =>
+            showHistory(chatId, userId,
+              TimeUtils.parseFrom(text, tz),
+              TimeUtils.parseTo(text, tz))
+          case Success(StateSeqElem(ConversationState.SentMessage, lastMsg) :: _) =>
+            recordMark(chatId, userId, firstWord)
+          case x@_ =>
+            logger.warn(s"Unknown chat #($chatId, $userId) state: $x")
+            dropState(chatId, userId)
 
   private def record(chatId: Long, userId: String, text: String): Unit =
     db.saveMessage(chatId, userId, text)
@@ -114,12 +136,12 @@ class MoodUpdatesListener(config: Conf, bot: MoodBot) extends UpdatesListener
     )).oneTimeKeyboard(true)
     response.replyMarkup(keyboard)
     execute(response)
-    state((chatId, userId)) = (ConversationState.SentMessage, List())
+    prependOrCreateState((chatId, userId), StateSeqElem(ConversationState.SentMessage, text))
 
   private def showPlotAskPeriod(chatId: Long, userId: String): Unit =
     val req = new SendMessage(chatId, "введите период в формате 'дд.мм.гггг дд.мм.гггг'")
     execute(req)
-    state((chatId, userId)) = (ConversationState.SentPlotRequest, List())
+    prependOrCreateState((chatId, userId), StateSeqElem(ConversationState.SentPlotRequest, ""))
 
   private def showPlot(chatId: Long, userId: String, from: Try[Timestamp], to: Try[Timestamp]): Unit =
     try
@@ -153,7 +175,7 @@ class MoodUpdatesListener(config: Conf, bot: MoodBot) extends UpdatesListener
   private def showHistoryAskPeriod(chatId: Long, userId: String): Unit =
     val req = new SendMessage(chatId, "введите период в формате 'дд.мм.гггг дд.мм.гггг'")
     execute(req)
-    state((chatId, userId)) = (ConversationState.SentHistoryRequest, List())
+    prependOrCreateState((chatId, userId), StateSeqElem(ConversationState.SentHistoryRequest, ""))
 
   private def showHistory(chatId: Long, userId: String, dateFrom: Try[Timestamp], dateTo: Try[Timestamp]): Unit =
     try
@@ -163,6 +185,7 @@ class MoodUpdatesListener(config: Conf, bot: MoodBot) extends UpdatesListener
         val msg = new SendMessage(chatId, s"$timeFormatted \n${m.messageText}")
         execute(msg)
       )
+      dropState(chatId, userId)
     catch
       case x: (ArrayIndexOutOfBoundsException | DateTimeException) =>
         logger.error(s"Error parsing input date. ${x.getMessage}", x)
@@ -176,19 +199,23 @@ class MoodUpdatesListener(config: Conf, bot: MoodBot) extends UpdatesListener
   private def recordOnSpecificAskDateTime(chatId: Long, userId: String, text: String): Unit =
     val req = new SendMessage(chatId, "На какую дату и время перенести? Введите в формате дд.мм.гггг чч-мм")
     execute(req)
-    state((chatId, userId)) = (ConversationState.SentReattachRequest, List(text))
+    prependOrCreateState((chatId, userId), StateSeqElem(ConversationState.SentReattachRequest, text))
 
   private def recordOnSpecificTime(chatId: Long, userId: String, msg: String, ts: Try[Timestamp]): Unit =
     try
       db.saveMessageToDateTime(chatId, userId, msg, ts.get)
+      dropState(chatId, userId)
     catch
-      case x : Exception =>
-        dropState(chatId, userId)
-        logger.error(x.getMessage, x)
+      case x : DateTimeException =>
+        logger.error(s"Error parsing input date. ${x.getMessage}", x)
+        val errMsg = new SendMessage(chatId, "Неверный формат дат")
+        execute(errMsg)
+        recordOnSpecificAskDateTime(chatId, userId, msg)
 
   private def menu(chatId: Long, userId: String, introText: String): Unit =
     val menuMsg = new SendMessage(chatId, introText)
     execute(menuMsg)
+    dropState(chatId, userId)
 
   private def recordMark(chatId: Long, userId: String, mark: String): Unit =
     val markNum = mark match
