@@ -40,10 +40,9 @@ build/
 ### custom excludes ###
 token
 *.sql
-application-dev.conf
+application-dev*.conf
 application-stage.conf
 .idea
 .bsp
 deploy/
 design/
-DBConvertOnce.scala
