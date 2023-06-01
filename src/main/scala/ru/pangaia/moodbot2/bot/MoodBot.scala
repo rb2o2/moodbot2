@@ -29,11 +29,11 @@ object MoodBot:
     val profile = Try(args(0)).getOrElse("dev")
     val config = Config(profile)
     val bot = new MoodBot(config)
-    val handler = new MoodUpdatesListener(config, bot)
-    bot.setUpdatesListener(handler)
+    val listener = new MoodUpdatesListener(config, bot)
+    bot.setUpdatesListener(listener)
     bot.init()
     bot.awaitTermination()
-    
+
 class MoodBot(config: Conf) extends TelegramBot(config("token")):
   def init(): Unit =
     System.out.println("Press enter to shutdown...")

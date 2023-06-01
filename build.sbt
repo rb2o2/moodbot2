@@ -6,7 +6,7 @@ lazy val root = (project in file("."))
   .settings(
     name := "moodbot",
     version := "0.2",
-    scalaVersion := "3.2.2"
+    scalaVersion := "3.1.2"
   )
   .configs(IntegrationTest)
   .settings(Defaults.itSettings)
@@ -16,7 +16,7 @@ val testcontainersScalaVersion = "0.40.12"
 libraryDependencies := Seq(
   "org.scalactic" %% "scalactic" % "3.2.16" % "test,it",
   "org.scalatest" %% "scalatest" % "3.2.15" % "test,it",
-  "org.mockito" % "mockito-core" % "5.2.0",
+  "org.mockito" % "mockito-core" % "5.2.0" % "test,it",
   "org.scalikejdbc" %% "scalikejdbc" % "4.0.0",
   "org.postgresql" % "postgresql" % "42.6.0",
   "ch.qos.logback"  %  "logback-classic" % "1.4.6",

@@ -4,9 +4,10 @@ import ru.pangaia.moodbot2.data.Message
 
 import java.sql.Timestamp
 import java.text.SimpleDateFormat
-import java.time.{LocalDate, LocalDateTime, LocalTime, ZoneOffset}
+import java.time.{Instant, LocalDate, LocalDateTime, LocalTime, ZoneOffset}
 import java.time.format.DateTimeFormatter
-import scala.util.Try
+import java.time.temporal.ChronoUnit
+import scala.util.{Failure, Success, Try}
 
 object TimeUtils {
   def formatTime(m: Message): String =
@@ -36,4 +37,12 @@ object TimeUtils {
       .toInstant(ZoneOffset.ofHours(tzOffsetHours))
     Timestamp.from(instant)
 
+  def parsePeriod(p: String): Try[Timestamp] =
+    p.toLowerCase() match
+      case "все"|"всё"|"all" => Success(new Timestamp(0))
+      case "year"|"год" => Success(Timestamp.from(Instant.now().minus(365L, ChronoUnit.DAYS)))
+      case "месяц"|"month" => Success(Timestamp.from(Instant.now().minus(30L, ChronoUnit.DAYS)))
+      case "неделя"|"week" => Success(Timestamp.from(Instant.now().minus(7L, ChronoUnit.DAYS)))
+      case "день"|"day" => Success(Timestamp.from(Instant.now().minus(24L, ChronoUnit.HOURS)))
+      case _ => Failure(new IllegalArgumentException(s"illegal argument for period : $p"))
 }
