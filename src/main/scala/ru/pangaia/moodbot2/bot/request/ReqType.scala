@@ -65,7 +65,8 @@ case class DateFromToReq(from: String, to: String) extends ReqType:
 
 object ReqType:
   val markRegex: String =
-    "\ud83d\ude01|☺️|\ud83d\ude10|\ud83d\ude15|\ud83d\ude29"
+    "\ud83d\ude01|☺️|\ud83d\ude10|\ud83d\ude15|\ud83d\ude29|" +
+      ":\\)\\)|:\\(\\(|:\\(|:\\)|:-\\(|:-\\)|:-\\(\\(|:-\\)\\)|:-\\||:\\|"
   val cancelRegex: String = "cancel|отмена"
   val menuRegex: String = "start|menu|help|старт|меню|помощь"
   val plotCom: String = "plot|график"
