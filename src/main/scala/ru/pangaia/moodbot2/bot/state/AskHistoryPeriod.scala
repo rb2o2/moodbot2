@@ -24,4 +24,4 @@ case class AskHistoryPeriod(msg: String) extends ChatState:
         io.showHistory(chatId, userId, tsFrom.get, tsTo.get)
     )
     case Cancel(com) => (Base, io => io.cancel(chatId, userId))
-    case _ => (Base, _ => ())
+    case _ => (AskHistoryPeriod(msg), io => io.send(chatId, "Период не распознан"))

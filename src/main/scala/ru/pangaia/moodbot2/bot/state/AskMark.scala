@@ -12,7 +12,7 @@ case class AskMark(msg: String) extends ChatState:
       io =>
         io.mainMenu(chatId, userId)
     )
-    case Cancel(msg) => (Base, _ => ())
+    case Cancel(msg) => (Base, io => io.cancel(chatId, userId))
     case x => (Base,
       io =>
         io.send(chatId, "оценка не распознана :(")

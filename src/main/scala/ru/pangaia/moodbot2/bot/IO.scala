@@ -12,13 +12,13 @@ class IO(config: Conf, bot: TelegramBot) extends Plotting(config) with Persistin
   val tz: Int = Try(config("zone.offset.default").toInt).getOrElse(3)
   def processMark(chatId: Long, userId: String, msg: String): Unit =
     val markNum = msg match
-      case "\ud83d\ude01" => 2
-      case "☺️" => 1
-      case "\ud83d\ude10" => 0
-      case "\ud83d\ude15" => -1
-      case "\ud83d\ude29" => -2
+      case "\ud83d\ude01"|":))"|":-))" => 2
+      case "☺️"|":)"|":-)" => 1
+      case "\ud83d\ude10"|":|"|":-|" => 0
+      case "\ud83d\ude15"|":("|":-(" => -1
+      case "\ud83d\ude29"|":(("|":-((" => -2
       case _ =>
-        execute(new SendMessage(chatId, "оценка не распознана :("))
+        execute(new SendMessage(chatId, " Оценка не распознана :("))
         -100
     db.saveMark(chatId, userId, markNum)
     

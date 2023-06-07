@@ -15,5 +15,5 @@ case class AskReattachDateTimeMessage(msg: String) extends ChatState:
       io => io.mainMenu(chatId, userId)
     )
     case _ => (AskReattachDateTimeMessage(msg),
-      io => io.send(chatId, "неизвестные дата/время")
+      io => io.send(chatId, "Неизвестные дата/время")
     )
