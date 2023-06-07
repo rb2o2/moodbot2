@@ -27,10 +27,10 @@ class IO(config: Conf, bot: TelegramBot) extends Plotting(config) with Persistin
     execute(menuMsg)
 
   def mainMenu(chatId: Long, userId: String): Unit =
-    execute(new SendMessage(chatId, config("menu.text")))
+    send(chatId, config("menu.text"))
 
   def cancel(chatId: Long, userId: String): Unit =
-    execute(new SendMessage(chatId, config("cancel.text")))
+    send(chatId, config("cancel.text"))
     
   def showPlot(chatId: Long, userId: String, ts: Timestamp): Unit =
     val now = Timestamp.from(Instant.now())
